@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive,nosnippet">
+<meta name="referrer" content="no-referrer">
+<title>Go Tech Go</title>
+<style>
+  :root{ color-scheme:light }
+  html,body{ margin:0; height:100% }
+  body{ display:grid; place-items:center; background:#faf9f5; color:#59636f;
+        font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif; text-align:center; padding:2rem }
+  .wm{ font-weight:800; letter-spacing:-.02em; font-size:1.15rem; margin-bottom:.9rem }
+  .wm .a{color:#12161d} .wm .b{color:#c06600} .wm .c{color:#177a4a}
+  .msg{ max-width:34ch }
+  .bar{ width:min(18rem,60vw); height:3px; background:#e2dcd1; border-radius:2px;
+        margin:1.1rem auto 0; overflow:hidden }
+  .bar i{ display:block; height:100%; width:0; background:#c06600; transition:width .25s ease }
+</style>
+</head>
+<body>
+<div>
+  <div class="wm"><span class="a">Go</span><span class="b">Tech</span><span class="c">Go</span></div>
+  <div class="msg" id="m">Opening&hellip;</div>
+  <div class="bar"><i id="p"></i></div>
+</div>
+<script>
+(function(){
+  var m = document.getElementById('m'), p = document.getElementById('p');
+  function fail(t){ m.textContent = t; p.parentNode.style.display = 'none'; }
+
+  // The key lives in the URL fragment, which browsers never send to the server.
+  var hash = location.hash.replace(/^#/,'');
+  var key64 = (hash.match(/(?:^|&)k=([A-Za-z0-9\-_]+)/) || [])[1];
+  if (!key64) { return fail('This link is incomplete. Use the full link exactly as it was sent to you — including everything after the # — or ask Ezra to resend it.'); }
+  if (!window.crypto || !crypto.subtle) { return fail('This browser can’t open the document. Try Chrome, Safari, Edge or Firefox.'); }
+
+  function b64uToBytes(s){
+    s = s.replace(/-/g,'+').replace(/_/g,'/');
+    while (s.length % 4) s += '=';
+    var bin = atob(s), out = new Uint8Array(bin.length);
+    for (var i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  var raw;
+  try { raw = b64uToBytes(key64); } catch(e){ return fail('That link looks damaged. Ask Ezra to resend it.'); }
+  if (raw.length !== 32) { return fail('That link looks damaged. Ask Ezra to resend it.'); }
+
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET','deck.enc',true);
+  xhr.responseType = 'arraybuffer';
+  xhr.onprogress = function(e){
+    if (e.lengthComputable) { p.style.width = Math.round(e.loaded/e.total*100)+'%'; }
+  };
+  xhr.onerror = function(){ fail('Couldn’t reach the document. Check your connection and reload.'); };
+  xhr.onload = function(){
+    if (xhr.status !== 200) { return fail('Couldn’t load the document (' + xhr.status + ').'); }
+    p.style.width = '100%';
+    var buf = new Uint8Array(xhr.response);
+    var iv = buf.subarray(0,12), payload = buf.subarray(12);
+    crypto.subtle.importKey('raw', raw, {name:'AES-GCM'}, false, ['decrypt'])
+      .then(function(k){ return crypto.subtle.decrypt({name:'AES-GCM', iv:iv}, k, payload); })
+      .then(function(plain){
+        var html = new TextDecoder('utf-8').decode(plain);
+        // Replace the whole document so the deck's own scripts run normally.
+        document.open(); document.write(html); document.close();
+      })
+      .catch(function(){
+        fail('That link isn’t valid for this document. Ask Ezra to resend it.');
+      });
+  };
+  xhr.send();
+})();
+</script>
+</body>
+</html>
